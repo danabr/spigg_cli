@@ -5,7 +5,8 @@
 -behavior(gen_server).
 
 %% API
--export([ start_link/0
+-export([ merge/1
+        , start_link/0
         , stop/0
         ]).
 
@@ -21,6 +22,10 @@
 -define(NODE, 'spigg@127.0.0.1').
 
 %% API
+
+merge(DB) ->
+  gen_server:call({?MODULE, ?NODE}, {merge, DB}).
+
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []). 
 
@@ -30,7 +35,9 @@ stop() ->
 %% gen_server callbacks
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
-handle_call(stop, _From, State) ->
+handle_call({merge, NewDB}, _From, #state{db=OldDB}=State) ->
+  {reply, ok, State#state{db=spigg:merge(OldDB, NewDB)}};
+handle_call(stop, _From, State)                            ->
   {stop, normal, State}.
 
 handle_cast(Msg, State) ->

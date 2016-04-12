@@ -42,7 +42,7 @@ ebin_path() ->
   Path = string:join(lists:reverse(RevPath), "/"),
   filename:absname(Path ++ "/ebin").
 
-run_cmd(["stop"]) ->
+run_cmd(["stop"])                ->
   try spigg_server:stop()
   catch
     exit:{normal, _} -> io:format("Stopped gracefully.~n");
@@ -50,7 +50,19 @@ run_cmd(["stop"]) ->
                                   "Shutting down anyway.~n")
   end,
   ok = rpc:call(spigg_node(), init, stop, []);
-run_cmd(_)        -> help().
+run_cmd(["analyze"|[_|_]=Files]) -> analyze(Files);
+run_cmd(_)                       -> help().
+
+analyze([])           -> ok;
+analyze([File|Files]) ->
+  Result = case spigg_analyze:beam(File) of
+    {ok, DB}           ->
+      ok = spigg_server:merge(DB),
+      "ok";
+    {error, not_found} -> "failed to read or parse"
+  end,
+  io:format("~s: ~s~n.", [File, Result]),
+  analyze(Files).
 
 help() ->
   io:format("spigg <command> [args]~n~n", []).
