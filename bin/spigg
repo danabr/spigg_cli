@@ -51,6 +51,21 @@ run_cmd(["stop"])                ->
   end,
   ok = rpc:call(spigg_node(), init, stop, []);
 run_cmd(["analyze"|[_|_]=Files]) -> analyze(Files);
+run_cmd(["lookup", MFAStr]) ->
+  case re:split(MFAStr, "[:/]", [{return, list}]) of
+    [M, F, A] -> run_cmd(["lookup", M, F, A]);
+    _         -> help()
+  end;
+run_cmd(["lookup", MStr, FStr, AStr])  ->
+  %% Note: We could avoid leaking atoms by sending raw strings to the server
+  %% and having it run list_to_existing_atom. If that fails, it is safe to
+  %% assume that the function has not been analyzed.
+  M = list_to_atom(MStr),
+  F = list_to_atom(FStr),
+  case string:to_integer(AStr) of
+    {A, []}    -> lookup(M, F, A);
+    {error, _} -> help()
+  end;
 run_cmd(_)                       -> help().
 
 analyze([])           -> ok;
@@ -61,8 +76,29 @@ analyze([File|Files]) ->
       "ok";
     {error, not_found} -> "failed to read or parse"
   end,
-  io:format("~s: ~s~n.", [File, Result]),
+  io:format("~s: ~s.~n", [File, Result]),
   analyze(Files).
+
+lookup(M, F, A) ->
+  case spigg_server:lookup({M, F, A}) of
+    {ok, {SideEffects, Unknowns}} ->
+      print_side_effects(SideEffects),
+      print_unknowns(Unknowns);
+    {error, not_found} ->
+      io:format("Function ~s:~s/~p has not been analyzed.~n",
+                [M, F, A]),
+      halt(1)
+  end.
+
+print_side_effects([]) ->
+  io:format("No side effects detected.~n").
+
+print_unknowns([])       -> ok;
+print_unknowns(Unknowns) ->
+  io:format("Unknown functions:~n"),
+  lists:foreach(fun({M, F, A}) ->
+    io:format("~p:~p/~p~n", [M, F, A])
+  end, Unknowns).
 
 help() ->
   io:format("spigg <command> [args]~n~n", []).

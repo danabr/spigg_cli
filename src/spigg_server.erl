@@ -5,7 +5,8 @@
 -behavior(gen_server).
 
 %% API
--export([ merge/1
+-export([ lookup/1
+        , merge/1
         , start_link/0
         , stop/0
         ]).
@@ -23,6 +24,9 @@
 
 %% API
 
+lookup({_, _, _}=MFA) ->
+  gen_server:call({?MODULE, ?NODE}, {lookup, MFA}).
+
 merge(DB) ->
   gen_server:call({?MODULE, ?NODE}, {merge, DB}).
 
@@ -35,6 +39,8 @@ stop() ->
 %% gen_server callbacks
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+handle_call({lookup, MFA}, _From, #state{db=DB}=State)     ->
+  {reply, spigg:side_effects(DB, MFA), State};
 handle_call({merge, NewDB}, _From, #state{db=OldDB}=State) ->
   {reply, ok, State#state{db=spigg:merge(OldDB, NewDB)}};
 handle_call(stop, _From, State)                            ->
