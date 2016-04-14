@@ -23,25 +23,26 @@
         ]).
 
 -define(NODE, 'spigg@127.0.0.1').
+-define(CALL_TIMEOUT, 30000).
 
 %% API
 dump(Path) when is_list(Path) ->
-  gen_server:call({?MODULE, ?NODE}, {dump, Path}).
+  call({dump, Path}).
 
 load(Path) when is_list(Path) ->
-  gen_server:call({?MODULE, ?NODE}, {load, Path}).
+  call({load, Path}).
 
 lookup({_, _, _}=MFA) ->
-  gen_server:call({?MODULE, ?NODE}, {lookup, MFA}).
+  call({lookup, MFA}).
 
 merge(DB) ->
-  gen_server:call({?MODULE, ?NODE}, {merge, DB}).
+  call({merge, DB}).
 
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []). 
 
 stop() ->
-  gen_server:call({?MODULE, ?NODE}, stop).
+  call(stop).
 
 %% gen_server callbacks
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -78,3 +79,7 @@ init(_Args) ->
   {ok, #state{db = spigg:new_db()}}.
 
 terminate(_Reason, _State) -> ok.
+
+%% Internal
+call(Msg) ->
+  gen_server:call({?MODULE, ?NODE}, Msg, ?CALL_TIMEOUT).
