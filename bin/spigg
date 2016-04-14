@@ -90,8 +90,15 @@ lookup(M, F, A) ->
       halt(1)
   end.
 
-print_side_effects([]) ->
-  io:format("No side effects detected.~n").
+print_side_effects([])          ->
+  io:format("No side effects detected.~n");
+print_side_effects(SideEffects) ->
+  io:format("Side effects:~n"),
+  lists:foreach(fun({Line, local, Effect}) ->
+                      io:format("~p: ~p~n", [Line, Effect]);
+                    ({Line, {M, F, A}, Effect}) ->
+                      io:format("~p: ~p (~p:~p/~p)~n", [Line, Effect, M, F, A])
+                end, SideEffects).
 
 print_unknowns([])       -> ok;
 print_unknowns(Unknowns) ->
