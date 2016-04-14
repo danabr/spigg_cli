@@ -6,6 +6,7 @@
 
 %% API
 -export([ dump/1
+        , load/1
         , lookup/1
         , merge/1
         , start_link/0
@@ -27,6 +28,9 @@
 dump(Path) when is_list(Path) ->
   gen_server:call({?MODULE, ?NODE}, {dump, Path}).
 
+load(Path) when is_list(Path) ->
+  gen_server:call({?MODULE, ?NODE}, {load, Path}).
+
 lookup({_, _, _}=MFA) ->
   gen_server:call({?MODULE, ?NODE}, {lookup, MFA}).
 
@@ -45,6 +49,18 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 handle_call({dump, Path}, _From, #state{db=DB}=State)      ->
   Res = file:write_file(Path, io_lib:format("~p.", [DB])),
   {reply, Res, State};
+handle_call({load, Path}, _From, #state{db=OldDB}=State)   ->
+  case file:consult(Path) of
+    {ok, [NewDB]} ->
+      try spigg:merge(OldDB, NewDB) of
+        CombinedDB -> {reply, ok, State#state{db=CombinedDB}}
+      catch
+        _:_ ->
+        {reply, error, State}
+      end;
+    _Err          ->
+      {reply, error, State}
+  end;
 handle_call({lookup, MFA}, _From, #state{db=DB}=State)     ->
   {reply, spigg:side_effects(DB, MFA), State};
 handle_call({merge, NewDB}, _From, #state{db=OldDB}=State) ->

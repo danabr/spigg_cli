@@ -48,6 +48,11 @@ run_cmd(["dump", Path]) ->
     ok   -> io:format("Database dumped to ~s.~n", [Path]);
     _Err -> io:format("Failed to write to ~s.~n", [Path])
   end;
+run_cmd(["load", Path]) ->
+  case spigg_server:load(Path) of
+    ok   -> io:format("Loaded ~s.~n", [Path]);
+    error -> io:format("Failed to load or parse ~s.~n", [Path])
+  end;
 run_cmd(["lookup", MFAStr]) ->
   case re:split(MFAStr, "[:/]", [{return, list}]) of
     [M, F, A] -> run_cmd(["lookup", M, F, A]);
