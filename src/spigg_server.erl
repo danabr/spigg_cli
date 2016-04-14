@@ -5,7 +5,8 @@
 -behavior(gen_server).
 
 %% API
--export([ lookup/1
+-export([ dump/1
+        , lookup/1
         , merge/1
         , start_link/0
         , stop/0
@@ -23,6 +24,8 @@
 -define(NODE, 'spigg@127.0.0.1').
 
 %% API
+dump(Path) when is_list(Path) ->
+  gen_server:call({?MODULE, ?NODE}, {dump, Path}).
 
 lookup({_, _, _}=MFA) ->
   gen_server:call({?MODULE, ?NODE}, {lookup, MFA}).
@@ -39,6 +42,9 @@ stop() ->
 %% gen_server callbacks
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
+handle_call({dump, Path}, _From, #state{db=DB}=State)      ->
+  Res = file:write_file(Path, io_lib:format("~p.", [DB])),
+  {reply, Res, State};
 handle_call({lookup, MFA}, _From, #state{db=DB}=State)     ->
   {reply, spigg:side_effects(DB, MFA), State};
 handle_call({merge, NewDB}, _From, #state{db=OldDB}=State) ->

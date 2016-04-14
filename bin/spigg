@@ -42,15 +42,12 @@ ebin_path() ->
   Path = string:join(lists:reverse(RevPath), "/"),
   filename:absname(Path ++ "/ebin").
 
-run_cmd(["stop"])                ->
-  try spigg_server:stop()
-  catch
-    exit:{normal, _} -> io:format("Stopped gracefully.~n");
-    _:_              -> io:format("Failed to gracefully stop the server. "
-                                  "Shutting down anyway.~n")
-  end,
-  ok = rpc:call(spigg_node(), init, stop, []);
 run_cmd(["analyze"|[_|_]=Files]) -> analyze(Files);
+run_cmd(["dump", Path]) ->
+  case spigg_server:dump(Path) of
+    ok   -> io:format("Database dumped to ~s.~n", [Path]);
+    _Err -> io:format("Failed to write to ~s.~n", [Path])
+  end;
 run_cmd(["lookup", MFAStr]) ->
   case re:split(MFAStr, "[:/]", [{return, list}]) of
     [M, F, A] -> run_cmd(["lookup", M, F, A]);
@@ -66,6 +63,14 @@ run_cmd(["lookup", MStr, FStr, AStr])  ->
     {A, []}    -> lookup(M, F, A);
     {error, _} -> help()
   end;
+run_cmd(["stop"])                ->
+  try spigg_server:stop()
+  catch
+    exit:{normal, _} -> io:format("Stopped gracefully.~n");
+    _:_              -> io:format("Failed to gracefully stop the server. "
+                                  "Shutting down anyway.~n")
+  end,
+  ok = rpc:call(spigg_node(), init, stop, []);
 run_cmd(_)                       -> help().
 
 analyze([])           -> ok;
