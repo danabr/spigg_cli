@@ -90,6 +90,10 @@ analyze([File|Files]) ->
   analyze(Files).
 
 lookup(M, F, A) ->
+  {Micro, _} = timer:tc(fun() -> do_lookup(M, F, A) end),
+  io:format("Operation completed in ~p s.~n", [Micro / 1000000]).
+
+do_lookup(M, F, A) ->
   case spigg_server:lookup({M, F, A}) of
     {ok, {SideEffects, Unknowns}} ->
       print_side_effects(SideEffects),
