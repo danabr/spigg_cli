@@ -1,1 +1,20 @@
-Spigg command line interface
+spigg command line interface (see https://github.com/danabr/spigg)
+
+spigg <command> [args]
+
+COMMANDS:
+analyze <file1> [<file2> ...]
+  Analyze the given beam files and add them to the database.
+dump <file>
+  Dump the database to the given file.
+help
+  Print this help text.
+load <file>
+  Load the database in the given file. The loaded database will
+  be merged with the existing database.
+lookup <Mod> <Fun> <Arity>
+  Lookup the side effects of Mod:Fun/Arity.
+lookup <Mod>:<Fun>/<Arity>
+  Lookup the side effects of Mod:Fun/Arity.
+stop
+  Stop the spigg daemon.

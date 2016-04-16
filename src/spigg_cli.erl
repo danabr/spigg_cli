@@ -118,6 +118,22 @@ print_unknowns(Unknowns) ->
   end, Unknowns).
 
 help() ->
-  io:format("spigg <command> [args]~n~n", []).
+  io:format("spigg <command> [args]~n~n", []),
+  io:format("COMMANDS:~n"),
+  io:format("analyze <file1> [<file2> ...]~n"),
+  io:format("  Analyze the given beam files and add them to the database.~n"),
+  io:format("dump <file>~n"),
+  io:format("  Dump the database to the given file.~n"),
+  io:format("help~n"),
+  io:format("  Print this help text.~n"),
+  io:format("load <file>~n"),
+  io:format("  Load the database in the given file. The loaded database will~n"
+            "  be merged with the existing database.~n"),
+  io:format("lookup <Mod> <Fun> <Arity>~n"),
+  io:format("  Lookup the side effects of Mod:Fun/Arity.~n"),
+  io:format("lookup <Mod>:<Fun>/<Arity>~n"),
+  io:format("  Lookup the side effects of Mod:Fun/Arity.~n"),
+  io:format("stop~n"),
+  io:format("  Stop the spigg daemon.~n").
 
 spigg_node() -> 'spigg@127.0.0.1'.
