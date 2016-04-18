@@ -49,20 +49,15 @@ run_cmd(["load", Path]) ->
     ok   -> io:format("Loaded ~s.~n", [Path]);
     error -> io:format("Failed to load or parse ~s.~n", [Path])
   end;
+run_cmd(["lookup", MFAStr, "--trace", SideEffectStr]) ->
+  SideEffect = list_to_atom(SideEffectStr),
+  trace(MFAStr, fun(X) -> X =:= SideEffect end);
+run_cmd(["lookup", MFAStr, "--trace"]) ->
+  trace(MFAStr, fun(_) -> true end);
 run_cmd(["lookup", MFAStr]) ->
-  case re:split(MFAStr, "[:/]", [{return, list}]) of
-    [M, F, A] -> run_cmd(["lookup", M, F, A]);
-    _         -> help()
-  end;
-run_cmd(["lookup", MStr, FStr, AStr])  ->
-  %% Note: We could avoid leaking atoms by sending raw strings to the server
-  %% and having it run list_to_existing_atom. If that fails, it is safe to
-  %% assume that the function has not been analyzed.
-  M = list_to_atom(MStr),
-  F = list_to_atom(FStr),
-  case string:to_integer(AStr) of
-    {A, []}    -> lookup(M, F, A);
-    {error, _} -> help()
+  case parse_mfa(MFAStr) of
+    {ok, MFA} -> lookup(MFA);
+    error     -> help()
   end;
 run_cmd(["stop"])                ->
   try spigg_server:stop()
@@ -73,6 +68,21 @@ run_cmd(["stop"])                ->
   end,
   ok = rpc:call(spigg_node(), init, stop, []);
 run_cmd(_)                       -> help().
+
+parse_mfa(MFAStr) ->
+  case re:split(MFAStr, "[:/]", [{return, list}]) of
+    [MStr, FStr, AStr] ->
+      %% Note: We could avoid leaking atoms by sending raw strings to the server
+      %% and having it run list_to_existing_atom. If that fails, it is safe to
+      %% assume that the function has not been analyzed.
+      M = list_to_atom(MStr),
+      F = list_to_atom(FStr),
+      case string:to_integer(AStr) of
+        {A, []}    -> {ok, {M, F, A}};
+        {error, _} -> error
+      end;
+    _                  -> error
+  end.
 
 analyze([])           -> ok;
 analyze([File|Files]) ->
@@ -85,14 +95,33 @@ analyze([File|Files]) ->
   io:format("~s: ~s.~n", [File, Result]),
   analyze(Files).
 
-lookup(M, F, A) ->
-  {Micro, _} = timer:tc(fun() -> do_lookup(M, F, A) end),
+lookup(MFA) ->
+  {Micro, _} = timer:tc(fun() -> do_lookup(MFA) end),
   io:format("Operation completed in ~p s.~n", [Micro / 1000000]).
 
-do_lookup(M, F, A) ->
-  case spigg_server:lookup({M, F, A}) of
+do_lookup({M, F, A}=MFA) ->
+  case spigg_server:lookup(MFA) of
     {ok, {SideEffects, Unknowns}} ->
       print_side_effects(SideEffects),
+      print_unknowns(Unknowns);
+    {error, not_found} ->
+      io:format("Function ~s:~s/~p has not been analyzed.~n",
+                [M, F, A]),
+      halt(1)
+  end.
+
+trace(MFAStr, TraceFun) ->
+  case parse_mfa(MFAStr) of
+    {ok, MFA} ->
+      {Micro, _} = timer:tc(fun() -> do_trace(MFA, TraceFun) end),
+      io:format("Operation completed in ~p s.~n", [Micro / 1000000]);
+    error     -> help()
+  end.
+
+do_trace({M, F, A}=MFA, TraceFun) ->
+  case spigg_server:trace(MFA, TraceFun) of
+    {ok, {SideEffects, Unknowns}} ->
+      print_side_effect_traces(SideEffects),
       print_unknowns(Unknowns);
     {error, not_found} ->
       io:format("Function ~s:~s/~p has not been analyzed.~n",
@@ -104,7 +133,7 @@ print_side_effects([])          ->
   io:format("No side effects detected.~n");
 print_side_effects(SideEffects) ->
   io:format("Side effects:~n"),
-  lists:foreach(fun({Line, local, Effect}) ->
+  lists:foreach(fun({Line, [], Effect}) ->
                       io:format("~p: ~p~n", [Line, Effect]);
                     ({Line, {M, F, A}, Effect}) ->
                       io:format("~p: ~p (~p:~p/~p)~n", [Line, Effect, M, F, A])
@@ -116,6 +145,22 @@ print_unknowns(Unknowns) ->
   lists:foreach(fun({M, F, A}) ->
     io:format("~p:~p/~p~n", [M, F, A])
   end, Unknowns).
+
+print_side_effect_traces([])          ->
+  io:format("No side effects matching the applied filters detected.~n");
+print_side_effect_traces(SideEffects) ->
+  io:format("Side effects:~n"),
+  lists:foreach(fun({Line, [], Effect}) ->
+                      io:format("~p: ~p~n", [Line, Effect]);
+                    ({Line, MFAs, Effect}) ->
+                      io:format("~p: ~p~n", [Line, Effect]),
+                      print_trace(MFAs, "  ")
+                end, SideEffects).
+
+print_trace([], _Indentation)              -> ok;
+print_trace([{M, F, A}|MFAs], Indentation) ->
+  io:format("~s~p:~p/~p~n", [Indentation, M, F, A]),
+  print_trace(MFAs, "  " ++ Indentation).
 
 help() ->
   io:format("spigg <command> [args]~n~n", []),
@@ -129,10 +174,11 @@ help() ->
   io:format("load <file>~n"),
   io:format("  Load the database in the given file. The loaded database will~n"
             "  be merged with the existing database.~n"),
-  io:format("lookup <Mod> <Fun> <Arity>~n"),
+  io:format("lookup <Mod>:<Fun>/<Arity> [--trace [<side_effect>]]~n"),
   io:format("  Lookup the side effects of Mod:Fun/Arity.~n"),
-  io:format("lookup <Mod>:<Fun>/<Arity>~n"),
-  io:format("  Lookup the side effects of Mod:Fun/Arity.~n"),
+  io:format("  If --trace is specified, spigg will the call chain leading to ~n"
+            "  the side effect. If <side_effect> is specified, only traces ~n"
+            "  matching that side effect will be printed.~n"),
   io:format("stop~n"),
   io:format("  Stop the spigg daemon.~n").
 

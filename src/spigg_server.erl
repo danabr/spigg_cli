@@ -10,6 +10,7 @@
         , lookup/1
         , merge/1
         , start_link/0
+        , trace/2
         , stop/0
         ]).
 
@@ -33,13 +34,26 @@ load(Path) when is_list(Path) ->
   call({load, Path}).
 
 lookup({_, _, _}=MFA) ->
-  call({lookup, MFA}).
+  case call({lookup, MFA}) of
+    {ok, {SideEffectsWithTraces, Unknown}} ->
+      SideEffects = top_level_side_effects(SideEffectsWithTraces, []),
+      {ok, {SideEffects, Unknown}};
+    {error, not_found} = Err               -> Err
+  end.
 
 merge(DB) ->
   call({merge, DB}).
 
 start_link() ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []). 
+
+trace({_, _, _}=MFA, TraceFun) ->
+  case call({lookup, MFA}) of
+    {ok, {SideEffects, Unknowns}} ->
+      Filtered = filter_side_effects(SideEffects, TraceFun),
+      {ok, {Filtered, Unknowns}};
+    {error, not_found} = Err      -> Err
+  end.
 
 stop() ->
   call(stop).
@@ -83,3 +97,17 @@ terminate(_Reason, _State) -> ok.
 %% Internal
 call(Msg) ->
   gen_server:call({?MODULE, ?NODE}, Msg, ?CALL_TIMEOUT).
+
+top_level_side_effects([], TopLevel)                                        ->
+  TopLevel;
+top_level_side_effects([{Line, [], Effect}|SideEffects], TopLevel)          ->
+  SideEffect = {Line, local, Effect},
+  top_level_side_effects(SideEffects,
+                         ordsets:add_element(SideEffect, TopLevel));
+top_level_side_effects([{Line, [MFA|_MFAs], Effect}|SideEffects], TopLevel) ->
+  SideEffect = {Line, MFA, Effect},
+  top_level_side_effects(SideEffects,
+                         ordsets:add_element(SideEffect, TopLevel)).
+
+filter_side_effects(SideEffects, Filter) ->
+  [ SE || {_Line, _Trace, Effect}=SE <- SideEffects, Filter(Effect) ].
